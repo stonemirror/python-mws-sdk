@@ -5,15 +5,10 @@
 # Based on http://code.google.com/p/amazon-mws-python
 #
 
-try:
-    from urllib import quote as urllib_quote
-except ImportError:
-    from urllib.parse import quote as urllib_quote
-
 import hashlib
 import hmac
 import base64
-import utils
+from .utils import xml2dict
 import re
 try:
     from xml.etree.ElementTree import ParseError as XMLError
@@ -24,12 +19,13 @@ from time import strftime, gmtime
 from requests import request
 from requests.exceptions import HTTPError
 
+from urllib.parse import quote as urllib_quote
+
 import time
 import logging
 
 # create logger
 logger = logging.getLogger(__name__)
-
 
 __all__ = [
     'Feeds',
@@ -42,20 +38,21 @@ __all__ = [
     'Sellers',
 ]
 
-# See https://images-na.ssl-images-amazon.com/images/G/01/mwsportal/doc/en_US/bde/MWSDeveloperGuide._V357736853_.pdf page 8
+# See https://images-na.ssl-images-amazon.com/images/G/01/mwsportal/doc/en_US/
+# bde/MWSDeveloperGuide._V357736853_.pdf page 8
 # for a list of the end points and marketplace IDs
 
 MARKETPLACES = {
-    "CA" : "https://mws.amazonservices.ca", #A2EUQ1WTGCTBG2
-    "US" : "https://mws.amazonservices.com", #ATVPDKIKX0DER",
-    "DE" : "https://mws-eu.amazonservices.com", #A1PA6795UKMFR9
-    "ES" : "https://mws-eu.amazonservices.com", #A1RKKUPIHCS9HS
-    "FR" : "https://mws-eu.amazonservices.com", #A13V1IB3VIYZZH
-    "IN" : "https://mws.amazonservices.in", #A21TJRUUN4KGV
-    "IT" : "https://mws-eu.amazonservices.com", #APJ6JRA9NG5V4
-    "UK" : "https://mws-eu.amazonservices.com", #A1F83G8C2ARO7P
-    "JP" : "https://mws.amazonservices.jp", #A1VC38T7YXB528
-    "CN" : "https://mws.amazonservices.com.cn", #AAHKV2X7AFYLW
+    "CA": "https://mws.amazonservices.ca",  # A2EUQ1WTGCTBG2
+    "US": "https://mws.amazonservices.com",  # ATVPDKIKX0DER",
+    "DE": "https://mws-eu.amazonservices.com",  # A1PA6795UKMFR9
+    "ES": "https://mws-eu.amazonservices.com",  # A1RKKUPIHCS9HS
+    "FR": "https://mws-eu.amazonservices.com",  # A13V1IB3VIYZZH
+    "IN": "https://mws.amazonservices.in",  # A21TJRUUN4KGV
+    "IT": "https://mws-eu.amazonservices.com",  # APJ6JRA9NG5V4
+    "UK": "https://mws-eu.amazonservices.com",  # A1F83G8C2ARO7P
+    "JP": "https://mws.amazonservices.jp",  # A1VC38T7YXB528
+    "CN": "https://mws.amazonservices.com.cn",  # AAHKV2X7AFYLW
 }
 
 
@@ -73,7 +70,7 @@ def calc_md5(string):
     """
     md = hashlib.md5()
     md.update(string)
-    return base64.encodestring(md.digest()).strip('\n')
+    return base64.encodestring(md.digest()).decode().strip('\n')
 
 
 def remove_empty(d):
@@ -81,23 +78,23 @@ def remove_empty(d):
         Helper function that removes all keys from a dictionary (d),
         that have an empty value.
     """
-    for key in d.keys():
+    for key in list(d):
         if not d[key]:
             del d[key]
     return d
 
 
 def remove_namespace(xml):
-    regex = re.compile(' xmlns(:ns2)?="[^"]+"|(ns2:)|(xml:)')
-    return regex.sub('', xml)
+    regex = re.compile(b' xmlns(:ns2)?="[^"]+"|(ns2:)|(xml:)')
+    return regex.sub(b'', xml)
 
 
 class DictWrapper(object):
     def __init__(self, xml, rootkey=None):
         self.original = xml
         self._rootkey = rootkey
-        self._mydict = utils.xml2dict().fromstring(remove_namespace(xml))
-        self._response_dict = self._mydict.get(self._mydict.keys()[0],
+        self._mydict = xml2dict().fromstring(remove_namespace(xml))
+        self._response_dict = self._mydict.get(list(self._mydict)[0],
                                                self._mydict)
 
     @property
@@ -151,7 +148,8 @@ class MWS(object):
     # Which is the name of the parameter for that specific account type.
     ACCOUNT_TYPE = "SellerId"
 
-    def __init__(self, access_key, secret_key, account_id, region='US', domain='', uri="", version="", auth_token=""):
+    def __init__(self, access_key, secret_key, account_id, region='US',
+                 domain='', uri="", version="", auth_token=""):
         self.access_key = access_key
         self.secret_key = secret_key
         self.account_id = account_id
@@ -165,10 +163,11 @@ class MWS(object):
         elif region in MARKETPLACES:
             self.domain = MARKETPLACES[region]
         else:
-            error_msg = "Incorrect region supplied ('%(region)s'). Must be one of the following: %(marketplaces)s" % {
-                "marketplaces" : ', '.join(MARKETPLACES.keys()),
-                "region" : region,
-            }
+            error_msg = "Incorrect region supplied ('%(region)s'). " + \
+                "Must be one of the following: %(marketplaces)s" % {
+                    "marketplaces": ', '.join(MARKETPLACES.keys()),
+                    "region": region,
+                }
             raise MWSError(error_msg)
 
     def make_request(self, extra_data, *args, **kwargs):
@@ -213,32 +212,41 @@ class MWS(object):
         if self.auth_token:
             params['MWSAuthToken'] = self.auth_token
         params.update(extra_data)
-        request_description = '&'.join(['%s=%s' % (k, urllib_quote(params[k], safe='-_.~').encode('utf-8')) for k in sorted(params)])
+        request_description = '&'.join(
+            ['%s=%s' % (k, urllib_quote(params[k], safe='-_.~'))
+             for k in sorted(params)])
         signature = self.calc_signature(method, request_description)
-        url = '%s%s?%s&Signature=%s' % (self.domain, self.uri, request_description, urllib_quote(signature))
-        headers = {'User-Agent': 'python-amazon-mws/0.0.1 (Language=Python)'}
+        url = '%s%s?%s&Signature=%s' % (self.domain, self.uri,
+                                        request_description,
+                                        urllib_quote(signature))
+        headers = {'User-Agent': 'amazon-mws/0.2 (Language=Python)'}
         headers.update(kwargs.get('extra_headers', {}))
 
         try:
-            # Some might wonder as to why i don't pass the params dict as the params argument to request.
-            # My answer is, here i have to get the url parsed string of params in order to sign it, so
-            # if i pass the params dict as params to request, request will repeat that step because it will need
-            # to convert the dict to a url parsed string, so why do it twice if i can just pass the full url :).
-            response = request(method, url, data=kwargs.get('body', ''), headers=headers)
+            # Some might wonder as to why i don't pass the params dict as the
+            # params argument to request. My answer is, here i have to get the
+            # url parsed string of params in order to sign it, so if i pass the
+            # params dict as params to request, request will repeat that step
+            # because it will need to convert the dict to a url parsed string,
+            # so why do it twice if i can just pass the full url :).
+            response = request(method, url, data=kwargs.get('body', ''),
+                               headers=headers)
             response.raise_for_status()
             # When retrieving data from the response object,
-            # be aware that response.content returns the content in bytes while response.text calls
-            # response.content and converts it to unicode.
+            # be aware that response.content returns the content in bytes while
+            # response.text calls response.content and converts it to unicode.
             data = response.content
 
-            # I do not check the headers to decide which content structure to server simply because sometimes
-            # Amazon's MWS API returns XML error responses with "text/plain" as the Content-Type.
+            # I do not check the headers to decide which content structure to
+            # server simply because sometimes Amazon's MWS API returns XML
+            # error responses with "text/plain" as the Content-Type.
             try:
-                parsed_response = DictWrapper(data, extra_data.get("Action") + "Result")
+                parsed_response = DictWrapper(data, extra_data.get("Action") +
+                                              "Result")
             except XMLError:
                 parsed_response = DataWrapper(data, response.headers)
 
-        except HTTPError, e:
+        except HTTPError as e:
             error = MWSError(str(e))
             error.response = e.response
             raise error
@@ -250,7 +258,8 @@ class MWS(object):
     def get_service_status(self):
         """
             Returns a GREEN, GREEN_I, YELLOW or RED status.
-            Depending on the status/availability of the API its being called from.
+            Depending on the status/availability of the API its being called
+            from.
         """
 
         return self.make_request(extra_data=dict(Action='GetServiceStatus'))
@@ -258,8 +267,12 @@ class MWS(object):
     def calc_signature(self, method, request_description):
         """Calculate MWS signature to interface with Amazon
         """
-        sig_data = method + '\n' + self.domain.replace('https://', '').lower() + '\n' + self.uri + '\n' + request_description
-        return base64.b64encode(hmac.new(str(self.secret_key), sig_data, hashlib.sha256).digest())
+        sig_data = method + '\n' \
+            + self.domain.replace('https://', '').lower() + '\n' \
+            + self.uri + '\n' + request_description
+        return base64.b64encode(hmac.new(self.secret_key.encode('utf-8'),
+                                         sig_data.encode('utf-8'),
+                                         hashlib.sha256).digest()).decode()
 
     def get_timestamp(self):
         """
@@ -303,15 +316,19 @@ class Feeds(MWS):
         data = dict(Action='SubmitFeed',
                     FeedType=feed_type,
                     PurgeAndReplace=purge)
-        data.update(self.enumerate_param('MarketplaceIdList.Id.', marketplaceids))
+        data.update(self.enumerate_param('MarketplaceIdList.Id.',
+                                         marketplaceids))
         md = calc_md5(feed)
         return self.make_request(data, method="POST", body=feed,
-                                 extra_headers={'Content-MD5': md, 'Content-Type': content_type})
+                                 extra_headers={'Content-MD5': md,
+                                                'Content-Type': content_type})
 
-    def get_feed_submission_list(self, feedids=None, max_count=None, feedtypes=None,
-                                    processingstatuses=None, fromdate=None, todate=None):
+    def get_feed_submission_list(self, feedids=None, max_count=None,
+                                 feedtypes=None, processingstatuses=None,
+                                 fromdate=None, todate=None):
         """
-        Returns a list of all feed submissions submitted in the previous 90 days.
+        Returns a list of all feed submissions submitted in the previous 90
+        days.
         That match the query parameters.
         """
 
@@ -321,22 +338,27 @@ class Feeds(MWS):
                     SubmittedToDate=todate,)
         data.update(self.enumerate_param('FeedSubmissionIdList.Id', feedids))
         data.update(self.enumerate_param('FeedTypeList.Type.', feedtypes))
-        data.update(self.enumerate_param('FeedProcessingStatusList.Status.', processingstatuses))
+        data.update(self.enumerate_param('FeedProcessingStatusList.Status.',
+                                         processingstatuses))
         return self.make_request(data)
 
     def get_submission_list_by_next_token(self, token):
         data = dict(Action='GetFeedSubmissionListByNextToken', NextToken=token)
         return self.make_request(data)
 
-    def get_feed_submission_count(self, feedtypes=None, processingstatuses=None, fromdate=None, todate=None):
+    def get_feed_submission_count(self, feedtypes=None,
+                                  processingstatuses=None, fromdate=None,
+                                  todate=None):
         data = dict(Action='GetFeedSubmissionCount',
                     SubmittedFromDate=fromdate,
                     SubmittedToDate=todate)
         data.update(self.enumerate_param('FeedTypeList.Type.', feedtypes))
-        data.update(self.enumerate_param('FeedProcessingStatusList.Status.', processingstatuses))
+        data.update(self.enumerate_param('FeedProcessingStatusList.Status.',
+                                         processingstatuses))
         return self.make_request(data)
 
-    def cancel_feed_submissions(self, feedids=None, feedtypes=None, fromdate=None, todate=None):
+    def cancel_feed_submissions(self, feedids=None, feedtypes=None,
+                                fromdate=None, todate=None):
         data = dict(Action='CancelFeedSubmissions',
                     SubmittedFromDate=fromdate,
                     SubmittedToDate=todate)
@@ -354,13 +376,12 @@ class Reports(MWS):
 
     ACCOUNT_TYPE = "Merchant"
 
-    ## REPORTS ###
-
     def get_report(self, report_id):
         data = dict(Action='GetReport', ReportId=report_id)
         return self.make_request(data)
 
-    def get_report_count(self, report_types=(), acknowledged=None, fromdate=None, todate=None):
+    def get_report_count(self, report_types=(), acknowledged=None,
+                         fromdate=None, todate=None):
         data = dict(Action='GetReportCount',
                     Acknowledged=acknowledged,
                     AvailableFromDate=fromdate,
@@ -368,14 +389,15 @@ class Reports(MWS):
         data.update(self.enumerate_param('ReportTypeList.Type.', report_types))
         return self.make_request(data)
 
-    def get_report_list(self, requestids=(), max_count=None, types=(), acknowledged=None,
-                        fromdate=None, todate=None):
+    def get_report_list(self, requestids=(), max_count=None, types=(),
+                        acknowledged=None, fromdate=None, todate=None):
         data = dict(Action='GetReportList',
                     Acknowledged=acknowledged,
                     AvailableFromDate=fromdate,
                     AvailableToDate=todate,
                     MaxCount=max_count)
-        data.update(self.enumerate_param('ReportRequestIdList.Id.', requestids))
+        data.update(self.enumerate_param('ReportRequestIdList.Id.',
+                                         requestids))
         data.update(self.enumerate_param('ReportTypeList.Type.', types))
         return self.make_request(data)
 
@@ -383,39 +405,43 @@ class Reports(MWS):
         data = dict(Action='GetReportListByNextToken', NextToken=token)
         return self.make_request(data)
 
-    def get_report_request_count(self, report_types=(), processingstatuses=(), fromdate=None, todate=None):
+    def get_report_request_count(self, report_types=(), processingstatuses=(),
+                                 fromdate=None, todate=None):
         data = dict(Action='GetReportRequestCount',
                     RequestedFromDate=fromdate,
                     RequestedToDate=todate)
         data.update(self.enumerate_param('ReportTypeList.Type.', report_types))
-        data.update(self.enumerate_param('ReportProcessingStatusList.Status.', processingstatuses))
+        data.update(self.enumerate_param('ReportProcessingStatusList.Status.',
+                                         processingstatuses))
         return self.make_request(data)
 
-    def get_report_request_list(self, requestids=(), types=(), processingstatuses=(),
-                                max_count=None, fromdate=None, todate=None):
+    def get_report_request_list(self, requestids=(), types=(),
+                                processingstatuses=(), max_count=None,
+                                fromdate=None, todate=None):
         data = dict(Action='GetReportRequestList',
                     MaxCount=max_count,
                     RequestedFromDate=fromdate,
                     RequestedToDate=todate)
-        data.update(self.enumerate_param('ReportRequestIdList.Id.', requestids))
+        data.update(self.enumerate_param('ReportRequestIdList.Id.',
+                                         requestids))
         data.update(self.enumerate_param('ReportTypeList.Type.', types))
-        data.update(self.enumerate_param('ReportProcessingStatusList.Status.', processingstatuses))
+        data.update(self.enumerate_param('ReportProcessingStatusList.Status.',
+                                         processingstatuses))
         return self.make_request(data)
 
     def get_report_request_list_by_next_token(self, token):
         data = dict(Action='GetReportRequestListByNextToken', NextToken=token)
         return self.make_request(data)
 
-    def request_report(self, report_type, start_date=None, end_date=None, marketplaceids=()):
+    def request_report(self, report_type, start_date=None, end_date=None,
+                       marketplaceids=()):
         data = dict(Action='RequestReport',
                     ReportType=report_type,
                     StartDate=start_date,
                     EndDate=end_date)
-        data.update(self.enumerate_param('MarketplaceIdList.Id.', marketplaceids))
+        data.update(self.enumerate_param('MarketplaceIdList.Id.',
+                                         marketplaceids))
         return self.make_request(data)
-
-
-    ### ReportSchedule ###
 
     def get_report_schedule_list(self, types=()):
         data = dict(Action='GetReportScheduleList')
@@ -435,9 +461,11 @@ class Orders(MWS):
     VERSION = "2011-01-01"
     NS = '{https://mws.amazonservices.com/Orders/2011-01-01}'
 
-    def list_orders(self, marketplaceids, created_after=None, created_before=None, lastupdatedafter=None,
-                    lastupdatedbefore=None, orderstatus=(), fulfillment_channels=(),
-                    payment_methods=(), buyer_email=None, seller_orderid=None, max_results='100'):
+    def list_orders(self, marketplaceids, created_after=None,
+                    created_before=None, lastupdatedafter=None,
+                    lastupdatedbefore=None, orderstatus=(),
+                    fulfillment_channels=(), payment_methods=(),
+                    buyer_email=None, seller_orderid=None, max_results='100'):
 
         data = dict(Action='ListOrders',
                     CreatedAfter=created_after,
@@ -450,8 +478,10 @@ class Orders(MWS):
                     )
         data.update(self.enumerate_param('OrderStatus.Status.', orderstatus))
         data.update(self.enumerate_param('MarketplaceId.Id.', marketplaceids))
-        data.update(self.enumerate_param('FulfillmentChannel.Channel.', fulfillment_channels))
-        data.update(self.enumerate_param('PaymentMethod.Method.', payment_methods))
+        data.update(self.enumerate_param('FulfillmentChannel.Channel.',
+                                         fulfillment_channels))
+        data.update(self.enumerate_param('PaymentMethod.Method.',
+                                         payment_methods))
         return self.make_request(data)
 
     def list_orders_by_next_token(self, token):
@@ -460,7 +490,8 @@ class Orders(MWS):
 
     def get_order(self, amazon_order_ids):
         data = dict(Action='GetOrder')
-        data.update(self.enumerate_param('AmazonOrderId.Id.', amazon_order_ids))
+        data.update(self.enumerate_param('AmazonOrderId.Id.',
+                                         amazon_order_ids))
         return self.make_request(data)
 
     def list_order_items(self, amazon_order_id):
@@ -501,7 +532,8 @@ class Products(MWS):
 
     def get_matching_product_for_id(self, marketplaceid, type, ids):
         """ Returns a list of products and their attributes, based on a list of
-            product identifier values (ASIN, SellerSKU, UPC, EAN, ISBN, GCID  and JAN)
+            product identifier values (ASIN, SellerSKU, UPC, EAN, ISBN, GCID
+            and JAN)
             The identifier type is case sensitive.
             Added in Fourth Release, API version 2011-10-01
         """
@@ -515,7 +547,8 @@ class Products(MWS):
         """ Returns the current competitive pricing of a product,
             based on the SellerSKU and MarketplaceId that you specify.
         """
-        data = dict(Action='GetCompetitivePricingForSKU', MarketplaceId=marketplaceid)
+        data = dict(Action='GetCompetitivePricingForSKU',
+                    MarketplaceId=marketplaceid)
         data.update(self.enumerate_param('SellerSKUList.SellerSKU.', skus))
         return self.make_request(data)
 
@@ -523,11 +556,13 @@ class Products(MWS):
         """ Returns the current competitive pricing of a product,
             based on the ASIN and MarketplaceId that you specify.
         """
-        data = dict(Action='GetCompetitivePricingForASIN', MarketplaceId=marketplaceid)
+        data = dict(Action='GetCompetitivePricingForASIN',
+                    MarketplaceId=marketplaceid)
         data.update(self.enumerate_param('ASINList.ASIN.', asins))
         return self.make_request(data)
 
-    def get_lowest_offer_listings_for_sku(self, marketplaceid, skus, condition="Any", excludeme="False"):
+    def get_lowest_offer_listings_for_sku(self, marketplaceid, skus,
+                                          condition="Any", excludeme="False"):
         data = dict(Action='GetLowestOfferListingsForSKU',
                     MarketplaceId=marketplaceid,
                     ItemCondition=condition,
@@ -535,7 +570,8 @@ class Products(MWS):
         data.update(self.enumerate_param('SellerSKUList.SellerSKU.', skus))
         return self.make_request(data)
 
-    def get_lowest_offer_listings_for_asin(self, marketplaceid, asins, condition="Any", excludeme="False"):
+    def get_lowest_offer_listings_for_asin(self, marketplaceid, asins,
+                                           condition="Any", excludeme="False"):
         data = dict(Action='GetLowestOfferListingsForASIN',
                     MarketplaceId=marketplaceid,
                     ItemCondition=condition,
@@ -580,8 +616,10 @@ class Sellers(MWS):
     def list_marketplace_participations(self):
         """
             Returns a list of marketplaces a seller can participate in and
-            a list of participations that include seller-specific information in that marketplace.
-            The operation returns only those marketplaces where the seller's account is in an active state.
+            a list of participations that include seller-specific information
+            in that marketplace.
+            The operation returns only those marketplaces where the seller's
+            account is in an active state.
         """
 
         data = dict(Action='ListMarketplaceParticipations')
@@ -589,14 +627,12 @@ class Sellers(MWS):
 
     def list_marketplace_participations_by_next_token(self, token):
         """
-            Takes a "NextToken" and returns the same information as "list_marketplace_participations".
+            Takes a "NextToken" and returns the same information as
+            "list_marketplace_participations".
             Based on the "NextToken".
         """
         data = dict(Action='ListMarketplaceParticipations', NextToken=token)
         return self.make_request(data)
-
-
-#### Fulfillment APIs ####
 
 
 class InboundShipments(MWS):
@@ -613,7 +649,8 @@ class Inventory(MWS):
     VERSION = '2010-10-01'
     NS = "{http://mws.amazonaws.com/FulfillmentInventory/2010-10-01}"
 
-    def list_inventory_supply(self, skus=(), datetime=None, response_group='Basic'):
+    def list_inventory_supply(self, skus=(), datetime=None,
+                              response_group='Basic'):
         """ Returns information on available inventory """
 
         data = dict(Action='ListInventorySupply',
@@ -644,8 +681,10 @@ class Recommendations(MWS):
 
     def get_last_updated_time_for_recommendations(self, marketplaceid):
         """
-        Checks whether there are active recommendations for each category for the given marketplace, and if there are,
-        returns the time when recommendations were last updated for each category.
+        Checks whether there are active recommendations for each category for
+        the given marketplace, and if there are,
+        returns the time when recommendations were last updated for each
+        category.
         """
 
         data = dict(Action='GetLastUpdatedTimeForRecommendations',
@@ -654,7 +693,8 @@ class Recommendations(MWS):
 
     def list_recommendations(self, marketplaceid, recommendationcategory=None):
         """
-        Returns your active recommendations for a specific category or for all categories for a specific marketplace.
+        Returns your active recommendations for a specific category or for all
+        categories for a specific marketplace.
         """
 
         data = dict(Action="ListRecommendations",
