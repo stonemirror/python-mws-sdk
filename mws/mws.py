@@ -20,6 +20,12 @@ from time import strftime, gmtime
 from requests import request
 from requests.exceptions import HTTPError
 
+import time
+import logging
+
+# create logger
+logger = logging.getLogger(__name__)
+
 
 __all__ = [
     'Feeds',
@@ -148,6 +154,7 @@ class MWS(object):
         self.auth_token = auth_token
         self.version = version or self.VERSION
         self.uri = uri or self.URI
+        self.logger = logger
 
         if domain:
             self.domain = domain
@@ -160,7 +167,30 @@ class MWS(object):
             }
             raise MWSError(error_msg)
 
-    def make_request(self, extra_data, method="GET", **kwargs):
+    def make_request(self, extra_data, *args, **kwargs):
+        method_name = extra_data['Action']
+        result = None
+        tries = 0
+        while result is None:
+            try:
+                result = self._make_request(extra_data, *args, **kwargs)
+            except requests.ConnectionError as e:
+                self.logger.warning('%s - connection error' % method_name)
+                pass  # retry immediately
+            except MWSError as e:
+                if str(e) == '503 Server Error: Service Unavailable':
+                    tries += 1
+                    seconds = tries
+                    self.logger.info("Backing off %s: %.1fs" %
+                                     (method_name, round(seconds, 1)))
+                    time.sleep(seconds)
+                else:
+                    self.logger.warning('%s - %s' % (method_name, e))
+                    raise
+
+        return result
+
+    def _make_request(self, extra_data, method="GET", **kwargs):
         """Make request to Amazon MWS API with these parameters
         """
 
@@ -177,7 +207,7 @@ class MWS(object):
             'SignatureMethod': 'HmacSHA256',
         }
         if self.auth_token:
-            params['MWSAuthToken'] = self.auth_token                    
+            params['MWSAuthToken'] = self.auth_token
         params.update(extra_data)
         request_description = '&'.join(['%s=%s' % (k, urllib.quote(params[k], safe='-_.~').encode('utf-8')) for k in sorted(params)])
         signature = self.calc_signature(method, request_description)

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from setuptools import setup, find_packages
 
-version = '0.6'
+version = '0.1'
 
 REQUIREMENTS = ['requests']
 
@@ -18,15 +18,16 @@ CLASSIFIERS = [
     "Programming Language :: Python :: 2",
     "Programming Language :: Python :: 2.6",
     "Programming Language :: Python :: 2.7",
+    "Programming Language :: Python :: 3.4",
 ]
 
 setup(
-    name="python-amazon-mws",
+    name="amazon-mws",
     version=version,
     description="A python interface for Amazon MWS",
-    author="Paulo Alvarado",
-    author_email="commonzenpython@gmail.com",
-    url="http://github.com/czpython/python-amazon-mws",
+    author="Juozas Kaziukenas",
+    author_email="juozas@juokaz.com",
+    url="https://github.com/juokaz/python-amazon-mws",
     packages=find_packages(),
     platforms=['OS Independent'],
     license='LICENSE.txt',
