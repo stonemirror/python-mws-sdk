@@ -17,7 +17,7 @@ except ImportError:
 from time import strftime, gmtime
 
 from requests import request
-from requests.exceptions import HTTPError
+from requests.exceptions import HTTPError, ConnectionError
 
 from urllib.parse import quote as urllib_quote
 
@@ -177,7 +177,7 @@ class MWS(object):
         while result is None:
             try:
                 result = self._make_request(extra_data, *args, **kwargs)
-            except requests.ConnectionError as e:
+            except ConnectionError as e:
                 self.logger.warning('%s - connection error' % method_name)
                 pass  # retry immediately
             except MWSError as e:
