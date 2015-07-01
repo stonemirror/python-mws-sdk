@@ -4,6 +4,8 @@ All except for the last two APIs ( InboundShipment and OutboundShipment ) are co
 Help towards completing this last two APIs would be greatly appreciated.
 I will mark this as stable 1.0 once all tests have been completed.
 
+Forked from [czpython/python-amazon-mws](https://github.com/czpython/python-amazon-mws).
+
 # Python Amazon MWS
 
 Python Amazon MWS is a python interface for the Amazon MWS API.
@@ -24,7 +26,3 @@ You can read the official Amazon MWS documentation [here](https://developer.amaz
 * Create tests
 * Finish InboundShipments & OutboundShipments APIs
 * Finish Docs
-
-# Contribute
-
-If you like the project, please, contact me at commonzenpython@gmail.com (gtalk and email) and help me improve it.
