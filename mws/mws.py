@@ -8,6 +8,7 @@
 import hashlib
 import hmac
 import base64
+from . import __version__ as sdk_version
 from .utils import xml2dict
 import re
 try:
@@ -155,6 +156,7 @@ class MWS(object):
         self.account_id = account_id
         self.auth_token = auth_token
         self.version = version or self.VERSION
+        self.sdk_version = sdk_version
         self.uri = uri or self.URI
         self.logger = logger
 
@@ -219,7 +221,8 @@ class MWS(object):
         url = '%s%s?%s&Signature=%s' % (self.domain, self.uri,
                                         request_description,
                                         urllib_quote(signature))
-        headers = {'User-Agent': 'amazon-mws/0.2 (Language=Python)'}
+        headers = {'User-Agent': 'amazon-mws/0.%s (Language=Python)' %
+                   self.version}
         headers.update(kwargs.get('extra_headers', {}))
 
         try:

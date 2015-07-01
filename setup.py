@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
 from distutils.core import setup
 
-version = '0.2'
+version = '0.2.2'
+
+REQUIRES = ['requests']
 
 setup(
     name="amazon-mws",
     version=version,
+    install_requires=REQUIRES,
     description="A python interface for Amazon MWS",
     long_description=open('README.md', 'rt').read(),
     author="Juozas Kaziukenas",
